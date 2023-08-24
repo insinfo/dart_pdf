@@ -17,7 +17,7 @@
 import 'dart:io';
 import 'dart:math';
 
-import 'package:pdf/widgets.dart';
+import 'package:pdf_fork/widgets.dart';
 import 'package:test/test.dart';
 
 late Document pdf;

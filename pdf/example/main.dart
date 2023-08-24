@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf_fork/widgets.dart' as pw;
 
 Future<void> main() async {
   final pdf = pw.Document();

@@ -18,7 +18,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:pdf/widgets.dart';
+import 'package:pdf_fork/widgets.dart';
 import 'package:test/test.dart';
 
 import 'utils.dart';

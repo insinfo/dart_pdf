@@ -16,8 +16,8 @@
 
 import 'dart:io';
 
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart';
+import 'package:pdf_fork/pdf.dart';
+import 'package:pdf_fork/widgets.dart';
 import 'package:test/test.dart';
 
 import 'utils.dart';

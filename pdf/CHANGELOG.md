@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.8.3
+
+- make dependencies less restrictive so this package is more compatible
+
 ## 3.8.2
 
 - Fix Compressed Cross-Reference ID

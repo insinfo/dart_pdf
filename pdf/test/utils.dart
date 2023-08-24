@@ -19,7 +19,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:pdf/widgets.dart';
+import 'package:pdf_fork/widgets.dart';
 
 Future<Uint8List> download(
   String url, {

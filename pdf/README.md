@@ -1,5 +1,11 @@
 # Pdf creation library for dart/flutter
 
+## A fork from https://github.com/DavBfr/dart_pdf
+
+* make dependencies less restrictive so this package is more compatible
+
+
+
 This library is divided into two parts:
 
 * a low-level Pdf creation library that takes care of the pdf bits generation.

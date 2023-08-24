@@ -16,7 +16,7 @@
 
 import 'dart:io';
 
-import 'package:pdf/pdf.dart';
+import 'package:pdf_fork/pdf.dart';
 import 'package:test/test.dart';
 
 void main() {

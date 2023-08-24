@@ -18,7 +18,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:pdf/pdf.dart';
+import 'package:pdf_fork/pdf.dart';
 import 'package:test/test.dart';
 import 'package:vector_math/vector_math_64.dart';
 

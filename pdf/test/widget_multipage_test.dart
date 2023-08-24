@@ -16,7 +16,7 @@
 
 import 'dart:io';
 
-import 'package:pdf/widgets.dart';
+import 'package:pdf_fork/widgets.dart';
 import 'package:test/test.dart';
 
 List<Widget> lines = <Widget>[];
