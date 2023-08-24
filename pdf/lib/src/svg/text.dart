@@ -57,7 +57,7 @@ class SvgText extends SvgOperation {
         SvgParser.getNumeric(element, 'dy', _brush, defaultValue: 0)!.sizeValue;
     final x = SvgParser.getNumeric(element, 'x', _brush)?.sizeValue;
     final y = SvgParser.getNumeric(element, 'y', _brush)?.sizeValue;
-
+    ///TODO checar o node.value para node.text
     final text = element.children
         .where((node) => node is XmlText || node is XmlCDATA)
         .map((node) => node.text)

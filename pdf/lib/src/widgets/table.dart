@@ -20,16 +20,7 @@ import 'package:meta/meta.dart';
 import 'package:vector_math/vector_math_64.dart';
 
 import '../../pdf.dart';
-import 'box_border.dart';
-import 'container.dart';
-import 'decoration.dart';
-import 'flex.dart';
-import 'geometry.dart';
-import 'multi_page.dart';
-import 'text.dart';
-import 'text_style.dart';
-import 'theme.dart';
-import 'widget.dart';
+import '../../widgets.dart';
 
 /// A horizontal group of cells in a [Table].
 @immutable
@@ -136,29 +127,27 @@ class TableBorder extends Border {
   }
 }
 
-class _TableContext extends WidgetContext {
+class TableContext extends WidgetContext {
   int firstLine = 0;
   int lastLine = 0;
 
   @override
-  void apply(_TableContext other) {
+  void apply(TableContext other) {
     firstLine = other.firstLine;
     lastLine = other.lastLine;
   }
 
   @override
   WidgetContext clone() {
-    return _TableContext()
-      ..firstLine = firstLine
-      ..lastLine = lastLine;
+    return TableContext()..apply(this);
   }
 
   @override
   String toString() => '$runtimeType firstLine: $firstLine lastLine: $lastLine';
 }
 
-class _ColumnLayout {
-  _ColumnLayout(this.width, this.flex);
+class ColumnLayout {
+  ColumnLayout(this.width, this.flex);
 
   final double? width;
   final double? flex;
@@ -167,7 +156,7 @@ class _ColumnLayout {
 abstract class TableColumnWidth {
   const TableColumnWidth();
 
-  _ColumnLayout layout(
+  ColumnLayout layout(
       Widget child, Context context, BoxConstraints constraints);
 }
 
@@ -177,10 +166,10 @@ class IntrinsicColumnWidth extends TableColumnWidth {
   final double? flex;
 
   @override
-  _ColumnLayout layout(
+  ColumnLayout layout(
       Widget child, Context context, BoxConstraints constraints) {
     if (flex != null) {
-      return _ColumnLayout(0, flex);
+      return ColumnLayout(0, flex);
     }
 
     child.layout(context, const BoxConstraints());
@@ -191,7 +180,7 @@ class IntrinsicColumnWidth extends TableColumnWidth {
         (child is Expanded
             ? child.flex.toDouble()
             : (child.box!.width == double.infinity ? 1 : 0));
-    return _ColumnLayout(calculatedWidth, childFlex);
+    return ColumnLayout(calculatedWidth, childFlex);
   }
 }
 
@@ -201,9 +190,9 @@ class FixedColumnWidth extends TableColumnWidth {
   final double width;
 
   @override
-  _ColumnLayout layout(
+  ColumnLayout layout(
       Widget child, Context context, BoxConstraints? constraints) {
-    return _ColumnLayout(width, 0);
+    return ColumnLayout(width, 0);
   }
 }
 
@@ -213,9 +202,9 @@ class FlexColumnWidth extends TableColumnWidth {
   final double flex;
 
   @override
-  _ColumnLayout layout(
+  ColumnLayout layout(
       Widget child, Context context, BoxConstraints? constraints) {
-    return _ColumnLayout(0, flex);
+    return ColumnLayout(0, flex);
   }
 }
 
@@ -225,9 +214,9 @@ class FractionColumnWidth extends TableColumnWidth {
   final double value;
 
   @override
-  _ColumnLayout layout(
+  ColumnLayout layout(
       Widget child, Context context, BoxConstraints? constraints) {
-    return _ColumnLayout(constraints!.maxWidth * value, 0);
+    return ColumnLayout(constraints!.maxWidth * value, 0);
   }
 }
 
@@ -246,6 +235,7 @@ class Table extends Widget with SpanningWidget {
     this.tableWidth = TableWidth.max,
   }) : super();
 
+  @Deprecated('Use TableHelper.fromTextArray() instead.')
   factory Table.fromTextArray({
     Context? context,
     required List<List<dynamic>> data,
@@ -280,121 +270,35 @@ class Table extends Widget with SpanningWidget {
     BoxDecoration? headerCellDecoration,
     BoxDecoration? rowDecoration,
     BoxDecoration? oddRowDecoration,
-  }) {
-    assert(headerCount >= 0);
-
-    if (context != null) {
-      final theme = Theme.of(context);
-      headerStyle ??= theme.tableHeader;
-      cellStyle ??= theme.tableCell;
-    }
-
-    headerPadding ??= cellPadding;
-    headerHeight ??= cellHeight;
-    oddRowDecoration ??= rowDecoration;
-    oddCellStyle ??= cellStyle;
-    cellAlignments ??= const <int, Alignment>{};
-    headerAlignments ??= cellAlignments;
-
-    final rows = <TableRow>[];
-
-    var rowNum = 0;
-    if (headers != null) {
-      final tableRow = <Widget>[];
-
-      for (final dynamic cell in headers) {
-        tableRow.add(
-          Container(
-            alignment: headerAlignments[tableRow.length] ?? headerAlignment,
-            padding: headerPadding,
-            decoration: headerCellDecoration,
-            constraints: BoxConstraints(minHeight: headerHeight),
-            child: Text(
-              headerFormat == null
-                  ? cell.toString()
-                  : headerFormat(tableRow.length, cell),
-              style: headerStyle,
-            ),
-          ),
-        );
-      }
-      rows.add(TableRow(
-        children: tableRow,
-        repeat: true,
-        decoration: headerDecoration,
-      ));
-      rowNum++;
-    }
-
-    for (final row in data) {
-      final tableRow = <Widget>[];
-      final isOdd = (rowNum - headerCount) % 2 != 0;
-
-      if (rowNum < headerCount) {
-        for (final dynamic cell in row) {
-          final align = headerAlignments[tableRow.length] ?? headerAlignment;
-          final textAlign = _textAlign(align);
-
-          tableRow.add(
-            Container(
-              alignment: align,
-              padding: headerPadding,
-              constraints: BoxConstraints(minHeight: headerHeight),
-              child: Text(
-                headerFormat == null
-                    ? cell.toString()
-                    : headerFormat(tableRow.length, cell),
-                style: headerStyle,
-                textAlign: textAlign,
-              ),
-            ),
-          );
-        }
-      } else {
-        for (final dynamic cell in row) {
-          final align = cellAlignments[tableRow.length] ?? cellAlignment;
-          final textAlign = _textAlign(align);
-          tableRow.add(
-            Container(
-              alignment: align,
-              padding: cellPadding,
-              constraints: BoxConstraints(minHeight: cellHeight),
-              decoration: cellDecoration == null
-                  ? null
-                  : cellDecoration(tableRow.length, cell, rowNum),
-              child: Text(
-                cellFormat == null
-                    ? cell.toString()
-                    : cellFormat(tableRow.length, cell),
-                style: isOdd ? oddCellStyle : cellStyle,
-                textAlign: textAlign,
-              ),
-            ),
-          );
-        }
-      }
-
-      var decoration = isOdd ? oddRowDecoration : rowDecoration;
-      if (rowNum < headerCount) {
-        decoration = headerDecoration;
-      }
-
-      rows.add(TableRow(
-        children: tableRow,
-        repeat: rowNum < headerCount,
-        decoration: decoration,
-      ));
-      rowNum++;
-    }
-    return Table(
-      border: border,
-      tableWidth: tableWidth,
-      children: rows,
-      columnWidths: columnWidths,
-      defaultColumnWidth: defaultColumnWidth,
-      defaultVerticalAlignment: TableCellVerticalAlignment.full,
-    );
-  }
+  }) =>
+      TableHelper.fromTextArray(
+        context: context,
+        data: data,
+        cellPadding: cellPadding,
+        cellHeight: cellHeight,
+        cellAlignment: cellAlignment,
+        cellAlignments: cellAlignments,
+        cellStyle: cellStyle,
+        oddCellStyle: oddCellStyle,
+        cellFormat: cellFormat,
+        cellDecoration: cellDecoration,
+        headerCount: headerCount = 1,
+        headers: headers,
+        headerPadding: headerPadding,
+        headerHeight: headerHeight,
+        headerAlignment: headerAlignment,
+        headerAlignments: headerAlignments,
+        headerStyle: headerStyle,
+        headerFormat: headerFormat,
+        border: border,
+        columnWidths: columnWidths,
+        defaultColumnWidth: defaultColumnWidth,
+        tableWidth: tableWidth,
+        headerDecoration: headerDecoration,
+        headerCellDecoration: headerCellDecoration,
+        rowDecoration: rowDecoration,
+        oddRowDecoration: oddRowDecoration,
+      );
 
   @override
   bool get canSpan => true;
@@ -414,7 +318,7 @@ class Table extends Widget with SpanningWidget {
   final List<double?> _widths = <double?>[];
   final List<double> _heights = <double>[];
 
-  final _TableContext _context = _TableContext();
+  final TableContext _context = TableContext();
 
   final TableColumnWidth defaultColumnWidth;
   final Map<int, TableColumnWidth>? columnWidths;
@@ -425,7 +329,7 @@ class Table extends Widget with SpanningWidget {
   }
 
   @override
-  void restoreContext(_TableContext context) {
+  void restoreContext(TableContext context) {
     _context.apply(context);
     _context.firstLine = _context.lastLine;
   }
@@ -673,15 +577,5 @@ class Table extends Widget with SpanningWidget {
     return (heightIndex >= 0 && heightIndex < _heights.length)
         ? _heights[heightIndex]
         : 0.0;
-  }
-
-  static TextAlign _textAlign(Alignment align) {
-    if (align.x == 0) {
-      return TextAlign.center;
-    } else if (align.x < 0) {
-      return TextAlign.left;
-    } else {
-      return TextAlign.right;
-    }
   }
 }

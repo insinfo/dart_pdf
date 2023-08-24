@@ -18,6 +18,7 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import 'package:meta/meta.dart';
+import 'package:pdf_fork/widgets.dart';
 import 'package:vector_math/vector_math_64.dart';
 
 import '../../pdf.dart';
@@ -146,7 +147,7 @@ abstract class Widget {
     PdfGraphics? canvas,
     BoxConstraints? constraints,
     required PdfPoint offset,
-    Alignment? alignment,
+    AlignmentGeometry? alignment,
     Context? context,
   }) {
     context ??= Context(
@@ -165,7 +166,8 @@ abstract class Widget {
     assert(widget.box != null);
 
     if (alignment != null) {
-      final d = alignment.withinRect(widget.box!);
+      final resolvedAlignment = alignment.resolve(Directionality.of(context));
+      final d = resolvedAlignment.withinRect(widget.box!);
       offset = PdfPoint(offset.x - d.x, offset.y - d.y);
     }
 
@@ -412,5 +414,25 @@ class DelayedWidget extends SingleChildWidget {
   void paint(Context context) {
     delayedPaint(context);
     super.paint(context);
+  }
+}
+
+class Inseparable extends SingleChildWidget {
+  Inseparable({required Widget child, bool canSpan = false})
+      : _canSpan = canSpan,
+        super(child: child);
+
+  final bool _canSpan;
+
+  @override
+  bool get canSpan => _canSpan && super.canSpan;
+
+  @override
+  bool get hasMoreWidgets => _canSpan && super.hasMoreWidgets;
+
+  @override
+  void paint(Context context) {
+    super.paint(context);
+    paintChild(context);
   }
 }

@@ -22,7 +22,13 @@ import 'package:pdf/pdf.dart';
 import '../callback.dart';
 import '../printing.dart';
 import '../printing_info.dart';
+import 'page.dart';
 import 'raster.dart';
+
+/// Custom widget builder that's used for custom
+/// rasterized pdf pages rendering
+typedef CustomPdfPagesBuilder = Widget Function(
+    BuildContext context, List<PdfPreviewPageData> pages);
 
 /// Flutter widget that uses the rasterized pdf pages to display a document.
 class PdfPreviewCustom extends StatefulWidget {
@@ -41,6 +47,9 @@ class PdfPreviewCustom extends StatefulWidget {
     this.shouldRepaint = false,
     this.loadingWidget,
     this.dpi,
+    this.scrollPhysics,
+    this.shrinkWrap = false,
+    this.pagesBuilder,
   }) : super(key: key);
 
   /// Pdf paper page format
@@ -57,6 +66,12 @@ class PdfPreviewCustom extends StatefulWidget {
 
   /// Decoration of scrollView
   final Decoration? scrollViewDecoration;
+
+  /// Whether the scrollView should be shrinkwrapped
+  final bool shrinkWrap;
+
+  /// The physics for the scrollView - e.g. use this to disable scrolling inside a scrollable
+  final ScrollPhysics? scrollPhysics;
 
   /// Decoration of PdfPreviewPage
   final Decoration? pdfPreviewPageDecoration;
@@ -82,6 +97,10 @@ class PdfPreviewCustom extends StatefulWidget {
   /// The rendering dots per inch resolution
   /// If not provided, this value is calculated.
   final double? dpi;
+
+  /// clients can pass this builder to render
+  /// their own pages.
+  final CustomPdfPagesBuilder? pagesBuilder;
 
   @override
   PdfPreviewCustomState createState() => PdfPreviewCustomState();
@@ -138,9 +157,12 @@ class PdfPreviewCustomState extends State<PdfPreviewCustom>
   void didChangeDependencies() {
     if (!infoLoaded) {
       infoLoaded = true;
-      Printing.info().then((PrintingInfo _info) {
+      Printing.info().then((PrintingInfo printingInfo) {
+        if (!mounted) {
+          return;
+        }
         setState(() {
-          info = _info;
+          info = printingInfo;
           raster();
         });
       });
@@ -163,8 +185,8 @@ class PdfPreviewCustomState extends State<PdfPreviewCustom>
       return _showError(error!);
     }
 
-    final _info = info;
-    if (_info != null && !_info.canRaster) {
+    final printingInfo = info;
+    if (printingInfo != null && !printingInfo.canRaster) {
       return _showError(_errorMessage);
     }
 
@@ -175,8 +197,13 @@ class PdfPreviewCustomState extends State<PdfPreviewCustom>
           );
     }
 
+    if (widget.pagesBuilder != null) {
+      return widget.pagesBuilder!(context, pages);
+    }
     return ListView.builder(
       controller: scrollController,
+      shrinkWrap: widget.shrinkWrap,
+      physics: widget.scrollPhysics,
       padding: widget.padding,
       itemCount: pages.length,
       itemBuilder: (BuildContext context, int index) => GestureDetector(
@@ -187,7 +214,11 @@ class PdfPreviewCustomState extends State<PdfPreviewCustom>
             transformationController.value.setIdentity();
           });
         },
-        child: pages[index],
+        child: PdfPreviewPage(
+          pageData: pages[index],
+          pdfPreviewPageDecoration: widget.pdfPreviewPageDecoration,
+          pageMargin: widget.previewPageMargin,
+        ),
       ),
     );
   }
@@ -202,7 +233,13 @@ class PdfPreviewCustomState extends State<PdfPreviewCustom>
       child: InteractiveViewer(
         transformationController: transformationController,
         maxScale: 5,
-        child: Center(child: pages[preview!]),
+        child: Center(
+          child: PdfPreviewPage(
+            pageData: pages[preview!],
+            pdfPreviewPageDecoration: widget.pdfPreviewPageDecoration,
+            pageMargin: widget.previewPageMargin,
+          ),
+        ),
       ),
     );
   }

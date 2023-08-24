@@ -19,7 +19,8 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'
+    show InformationCollector, StringProperty, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 
@@ -37,7 +38,7 @@ mixin PdfPreviewRaster on State<PdfPreviewCustom> {
   PdfPageFormat get pageFormat => widget.pageFormat;
 
   /// Resulting pages
-  final pages = <PdfPreviewPage>[];
+  final pages = <PdfPreviewPageData>[];
 
   /// Printing subsystem information
   PrintingInfo? info;
@@ -99,10 +100,10 @@ mixin PdfPreviewRaster on State<PdfPreviewCustom> {
     }
     _rastering = true;
 
-    Uint8List _doc;
+    Uint8List doc;
 
-    final _info = info;
-    if (_info != null && !_info.canRaster) {
+    final printingInfo = info;
+    if (printingInfo != null && !printingInfo.canRaster) {
       assert(() {
         if (kIsWeb) {
           FlutterError.reportError(FlutterErrorDetails(
@@ -121,7 +122,7 @@ mixin PdfPreviewRaster on State<PdfPreviewCustom> {
     }
 
     try {
-      _doc = await widget.build(pageFormat);
+      doc = await widget.build(pageFormat);
     } catch (exception, stack) {
       InformationCollector? collector;
 
@@ -158,7 +159,7 @@ mixin PdfPreviewRaster on State<PdfPreviewCustom> {
     try {
       var pageNum = 0;
       await for (final PdfRaster page in Printing.raster(
-        _doc,
+        doc,
         dpi: dpi,
         pages: widget.pages,
       )) {
@@ -166,23 +167,18 @@ mixin PdfPreviewRaster on State<PdfPreviewCustom> {
           _rastering = false;
           return;
         }
-
         if (pages.length <= pageNum) {
-          pages.add(PdfPreviewPage(
+          pages.add(PdfPreviewPageData(
             image: MemoryImage(await page.toPng()),
             width: page.width,
             height: page.height,
-            pdfPreviewPageDecoration: widget.pdfPreviewPageDecoration,
-            pageMargin: widget.previewPageMargin,
           ));
         } else {
           pages[pageNum].image.evict();
-          pages[pageNum] = PdfPreviewPage(
+          pages[pageNum] = PdfPreviewPageData(
             image: MemoryImage(await page.toPng()),
             width: page.width,
             height: page.height,
-            pdfPreviewPageDecoration: widget.pdfPreviewPageDecoration,
-            pageMargin: widget.previewPageMargin,
           );
         }
 

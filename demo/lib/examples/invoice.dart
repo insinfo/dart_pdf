@@ -16,7 +16,7 @@
 
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -451,7 +451,7 @@ class Invoice {
       'Total'
     ];
 
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
       border: null,
       cellAlignment: pw.Alignment.centerLeft,
       headerDecoration: pw.BoxDecoration(

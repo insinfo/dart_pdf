@@ -19,7 +19,7 @@ import 'dart:math' as math;
 import 'package:meta/meta.dart';
 
 import '../../pdf.dart';
-import '../pdf/font/arabic.dart' as arabic;
+import '../pdf/font/bidi_utils.dart' as bidi;
 import 'annotations.dart';
 import 'basic.dart';
 import 'document.dart';
@@ -32,7 +32,7 @@ import 'text_style.dart';
 import 'theme.dart';
 import 'widget.dart';
 
-enum TextAlign { left, right, center, justify }
+enum TextAlign { left, right, start, end, center, justify }
 
 enum TextDirection { ltr, rtl }
 
@@ -56,8 +56,11 @@ abstract class _Span {
   var offset = PdfPoint.zero;
 
   double get left;
+
   double get top;
+
   double get width;
+
   double get height;
 
   @override
@@ -175,11 +178,13 @@ class _TextDecoration {
 
     if (style.decoration!.contains(TextDecoration.underline)) {
       final base = -font.descent * style.fontSize! * textScaleFactor / 2;
-
+      final l = box!.left;
+      final r = box.right;
+      final x = globalBox!.x;
       context.canvas.drawLine(
-        globalBox!.x + box!.left,
+        x + l,
         globalBox.top + box.bottom + base,
-        globalBox.x + box.right,
+        x + r,
         globalBox.top + box.bottom + base,
       );
       if (style.decorationStyle == TextDecorationStyle.double) {
@@ -390,7 +395,7 @@ class _WidgetSpan extends _Span {
   }
 }
 
-typedef _VisitorCallback = bool Function(
+typedef VisitorCallback = bool Function(
   InlineSpan span,
   TextStyle? parentStyle,
   AnnotationBuilder? annotation,
@@ -432,7 +437,7 @@ abstract class InlineSpan {
   }
 
   bool visitChildren(
-    _VisitorCallback visitor,
+    VisitorCallback visitor,
     TextStyle? parentStyle,
     AnnotationBuilder? annotation,
   );
@@ -466,7 +471,7 @@ class WidgetSpan extends InlineSpan {
   /// Calls `visitor` on this [WidgetSpan]. There are no children spans to walk.
   @override
   bool visitChildren(
-    _VisitorCallback visitor,
+    VisitorCallback visitor,
     TextStyle? parentStyle,
     AnnotationBuilder? annotation,
   ) {
@@ -506,7 +511,7 @@ class TextSpan extends InlineSpan {
 
   @override
   bool visitChildren(
-    _VisitorCallback visitor,
+    VisitorCallback visitor,
     TextStyle? parentStyle,
     AnnotationBuilder? annotation,
   ) {
@@ -544,6 +549,7 @@ class _Line {
 
   final int firstSpan;
   final int countSpan;
+
   int get lastSpan => firstSpan + countSpan;
 
   TextAlign get textAlign => parent._textAlign;
@@ -569,58 +575,73 @@ class _Line {
 
   void realign(double totalWidth) {
     final spans = parent._spans.sublist(firstSpan, lastSpan);
+    final isRTL = textDirection == TextDirection.rtl;
 
     var delta = 0.0;
     switch (textAlign) {
       case TextAlign.left:
+        delta = isRTL ? wordsWidth : 0;
         break;
       case TextAlign.right:
-        delta = totalWidth - wordsWidth;
+        delta = isRTL ? totalWidth : totalWidth - wordsWidth;
+        break;
+      case TextAlign.start:
+        delta = isRTL ? totalWidth : 0;
+        break;
+      case TextAlign.end:
+        delta = isRTL ? wordsWidth : totalWidth - wordsWidth;
         break;
       case TextAlign.center:
         delta = (totalWidth - wordsWidth) / 2.0;
+        if (isRTL) {
+          delta += wordsWidth;
+        }
         break;
       case TextAlign.justify:
+        delta = isRTL ? totalWidth : 0;
         if (!justify) {
-          totalWidth = wordsWidth;
           break;
         }
-        delta = (totalWidth - wordsWidth) / (spans.length - 1);
+
+        final gap = (totalWidth - wordsWidth) / (spans.length - 1);
         var x = 0.0;
         for (final span in spans) {
-          span.offset = span.offset.translate(x, -baseline);
-          x += delta;
+          span.offset = PdfPoint(
+            isRTL
+                ? delta - x - (span.offset.x + span.width)
+                : span.offset.x + x,
+            span.offset.y - baseline,
+          );
+          x += gap;
         }
+
         return;
     }
 
-    if (textDirection == TextDirection.rtl) {
+    if (isRTL) {
       for (final span in spans) {
         span.offset = PdfPoint(
-          totalWidth - (span.offset.x + span.width) - delta,
+          delta - (span.offset.x + span.width),
           span.offset.y - baseline,
         );
       }
-
       return;
     }
 
     for (final span in spans) {
       span.offset = span.offset.translate(delta, -baseline);
     }
-
-    return;
   }
 }
 
-class _RichTextContext extends WidgetContext {
+class RichTextContext extends WidgetContext {
   var startOffset = 0.0;
   var endOffset = 0.0;
   var spanStart = 0;
   var spanEnd = 0;
 
   @override
-  void apply(_RichTextContext other) {
+  void apply(RichTextContext other) {
     startOffset = other.startOffset;
     endOffset = other.endOffset;
     spanStart = other.spanStart;
@@ -629,7 +650,7 @@ class _RichTextContext extends WidgetContext {
 
   @override
   WidgetContext clone() {
-    return _RichTextContext()..apply(this);
+    return RichTextContext()..apply(this);
   }
 
   @override
@@ -671,7 +692,7 @@ class RichText extends Widget with SpanningWidget {
 
   final List<_TextDecoration> _decorations = <_TextDecoration>[];
 
-  final _context = _RichTextContext();
+  final _context = RichTextContext();
 
   final TextOverflow? overflow;
 
@@ -688,7 +709,6 @@ class RichText extends Widget with SpanningWidget {
         return;
       }
     }
-
     _decorations.add(td);
   }
 
@@ -863,8 +883,9 @@ class RichText extends Widget with SpanningWidget {
     final theme = Theme.of(context);
     final _softWrap = softWrap ?? theme.softWrap;
     final _maxLines = maxLines ?? theme.maxLines;
-    _textAlign = textAlign ?? theme.textAlign;
     final _textDirection = textDirection ?? Directionality.of(context);
+    _textAlign = textAlign ?? theme.textAlign ?? TextAlign.start;
+
     final _overflow = this.overflow ?? theme.overflow;
 
     final constraintWidth = constraints.hasBoundedWidth
@@ -903,7 +924,7 @@ class RichText extends Widget with SpanningWidget {
               font.stringMetrics(' ') * (style.fontSize! * textScaleFactor);
 
           final spanLines = (_textDirection == TextDirection.rtl
-                  ? arabic.convert(span.text!)
+                  ? bidi.logicalToVisual(span.text!)
                   : span.text)!
               .split('\n');
 
@@ -1279,10 +1300,10 @@ class RichText extends Widget with SpanningWidget {
   bool get canSpan => overflow == TextOverflow.span;
 
   @override
-  bool get hasMoreWidgets => overflow == TextOverflow.span;
+  bool get hasMoreWidgets => canSpan;
 
   @override
-  void restoreContext(_RichTextContext context) {
+  void restoreContext(RichTextContext context) {
     _context.spanStart = context.spanEnd;
     _context.startOffset = -context.endOffset;
   }

@@ -19,10 +19,7 @@ import 'dart:math' as math;
 import 'package:vector_math/vector_math_64.dart';
 
 import '../../pdf.dart';
-import 'flex.dart';
-import 'geometry.dart';
-import 'multi_page.dart';
-import 'widget.dart';
+import '../../widgets.dart';
 
 /// How [Wrap] should align objects.
 enum WrapAlignment {
@@ -45,21 +42,19 @@ class _RunMetrics {
   final int childCount;
 }
 
-class _WrapContext extends WidgetContext {
+class WrapContext extends WidgetContext {
   int firstChild = 0;
   int lastChild = 0;
 
   @override
-  void apply(_WrapContext other) {
+  void apply(WrapContext other) {
     firstChild = other.firstChild;
     lastChild = other.lastChild;
   }
 
   @override
   WidgetContext clone() {
-    return _WrapContext()
-      ..firstChild = firstChild
-      ..lastChild = lastChild;
+    return WrapContext()..apply(this);
   }
 
   @override
@@ -112,7 +107,7 @@ class Wrap extends MultiChildWidget with SpanningWidget {
   @override
   bool get hasMoreWidgets => _context.lastChild < children.length;
 
-  final _WrapContext _context = _WrapContext();
+  final WrapContext _context = WrapContext();
 
   double? _getMainAxisExtent(Widget child) {
     switch (direction) {
@@ -166,11 +161,14 @@ class Wrap extends MultiChildWidget with SpanningWidget {
     double? mainAxisLimit = 0.0;
     var flipMainAxis = false;
     var flipCrossAxis = false;
-
+    final textDirection = Directionality.of(context);
     switch (direction) {
       case Axis.horizontal:
         childConstraints = BoxConstraints(maxWidth: constraints.maxWidth);
         mainAxisLimit = constraints.maxWidth;
+        if (textDirection == TextDirection.rtl) {
+          flipMainAxis = true;
+        }
         if (verticalDirection == VerticalDirection.down) {
           flipCrossAxis = true;
         }
@@ -180,6 +178,9 @@ class Wrap extends MultiChildWidget with SpanningWidget {
         mainAxisLimit = constraints.maxHeight;
         if (verticalDirection == VerticalDirection.down) {
           flipMainAxis = true;
+        }
+        if (textDirection == TextDirection.rtl) {
+          flipCrossAxis = true;
         }
         break;
     }
@@ -392,7 +393,7 @@ class Wrap extends MultiChildWidget with SpanningWidget {
   }
 
   @override
-  void restoreContext(_WrapContext context) {
+  void restoreContext(WrapContext context) {
     _context.apply(context);
     _context.firstChild = context.lastChild;
   }

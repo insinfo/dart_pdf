@@ -24,7 +24,6 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
-import 'package:image/image.dart' as im;
 import 'package:pdf/pdf.dart';
 
 import 'src/callback.dart';
@@ -46,8 +45,9 @@ class PrintingPlugin extends PrintingPlatform {
 
   static const String _frameId = '__net_nfet_printing__';
 
-  static const _pdfJsVersion =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.13.216';
+  static const _pdfJsCdnPath = 'https://unpkg.com/pdfjs-dist';
+
+  static const _pdfJsVersion = '3.2.146';
 
   final _loading = Mutex();
 
@@ -55,46 +55,61 @@ class PrintingPlugin extends PrintingPlatform {
         'typeof pdfjsLib !== "undefined" && pdfjsLib.GlobalWorkerOptions.workerSrc!="";'
       ]);
 
+  String get _selectPdfJsVersion => js.context.hasProperty('dartPdfJsVersion')
+      ? js.context['dartPdfJsVersion']
+      : _pdfJsVersion;
+
+  String get _pdfJsUrlBase => '$_pdfJsCdnPath@$_selectPdfJsVersion/';
+
   Future<void> _initPlugin() async {
     await _loading.acquire();
 
     if (!_hasPdfJsLib) {
+      dynamic amd;
+      dynamic define;
+      dynamic module;
+      dynamic exports;
+      if (js.context['define'] != null) {
+        // In dev, requireJs is loaded in. Disable it here.
+        define = js.JsObject.fromBrowserObject(js.context['define']);
+        amd = define['amd'];
+        define['amd'] = false;
+      }
+
+      // Save Webpack values and make typeof module != object
+      if (js.context['exports'] != null) {
+        exports = js.JsObject.fromBrowserObject(js.context['exports']);
+      }
+      js.context['exports'] = 0;
+
+      if (js.context['module'] != null) {
+        module = js.JsObject.fromBrowserObject(js.context['module']);
+      }
+      js.context['module'] = 0;
+
       final script = ScriptElement()
         ..type = 'text/javascript'
         ..async = true
-        ..src = '$_pdfJsVersion/pdf.min.js';
+        ..src = '$_pdfJsUrlBase/build/pdf.min.js';
       assert(document.head != null);
       document.head!.append(script);
       await script.onLoad.first;
 
-      if (js.context['pdfjsLib'] == null) {
-        // In dev, requireJs is loaded in
-        final require = js.JsObject.fromBrowserObject(js.context['require']);
-        require.callMethod('config', <dynamic>[
-          js.JsObject.jsify({
-            'paths': {
-              'pdfjs-dist/build/pdf': '$_pdfJsVersion/pdf.min',
-              'pdfjs-dist/build/pdf.worker': '$_pdfJsVersion/pdf.worker.min',
-            }
-          })
-        ]);
-
-        final completer = Completer<void>();
-
-        js.context.callMethod('require', <dynamic>[
-          js.JsObject.jsify(
-              ['pdfjs-dist/build/pdf', 'pdfjs-dist/build/pdf.worker']),
-          (dynamic app) {
-            js.context['pdfjsLib'] = app;
-            completer.complete();
-          }
-        ]);
-
-        await completer.future;
+      if (amd != null) {
+        // Re-enable requireJs
+        define['amd'] = amd;
       }
 
       js.context['pdfjsLib']['GlobalWorkerOptions']['workerSrc'] =
-          '$_pdfJsVersion/pdf.worker.min.js';
+          '$_pdfJsUrlBase/build/pdf.worker.min.js';
+
+      // Restore module and exports
+      if (module != null) {
+        js.context['module'] = module;
+      }
+      if (exports != null) {
+        js.context['exports'] = exports;
+      }
     }
 
     _loading.release();
@@ -289,20 +304,29 @@ class PrintingPlugin extends PrintingPlatform {
   ) async* {
     await _initPlugin();
 
-    final t = PdfJs.getDocument(Settings()..data = document);
+    final settings = Settings()..data = document;
+
+    if (!_hasPdfJsLib) {
+      settings
+        ..cMapUrl = '$_pdfJsUrlBase/cmaps/'
+        ..cMapPacked = true;
+    }
+
+    final jsDoc = PdfJs.getDocument(settings);
     try {
-      final d = await promiseToFuture<PdfJsDoc>(t.promise);
-      final numPages = d.numPages;
+      final doc = await promiseToFuture<PdfJsDoc>(jsDoc.promise);
+      final numPages = doc.numPages;
 
       final html.CanvasElement canvas =
           js.context['document'].createElement('canvas');
 
       final context = canvas.getContext('2d') as html.CanvasRenderingContext2D?;
-      final _pages =
+      final computedPages =
           pages ?? Iterable<int>.generate(numPages, (index) => index);
 
-      for (final i in _pages) {
-        final page = await promiseToFuture<PdfJsPage>(d.getPage(i + 1));
+      for (final pageIndex in computedPages) {
+        final page =
+            await promiseToFuture<PdfJsPage>(doc.getPage(pageIndex + 1));
         try {
           final viewport =
               page.getViewport(Settings()..scale = dpi / PdfPageFormat.inch);
@@ -340,7 +364,7 @@ class PrintingPlugin extends PrintingPlatform {
         }
       }
     } finally {
-      t.destroy();
+      jsDoc.destroy();
     }
   }
 }
@@ -358,11 +382,7 @@ class _WebPdfRaster extends PdfRaster {
 
   @override
   Uint8List get pixels {
-    if (_pixels == null) {
-      final img = im.PngDecoder().decodeImage(png)!;
-      _pixels = img.data.buffer.asUint8List();
-    }
-
+    _pixels ??= PdfRasterBase.fromPng(png).pixels;
     return _pixels!;
   }
 

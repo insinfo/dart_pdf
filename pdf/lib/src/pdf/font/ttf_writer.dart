@@ -19,15 +19,16 @@ import 'dart:typed_data';
 
 import 'ttf_parser.dart';
 
-/// Generate a TTF font copy with the minimal number of glyph to embedd
+/// Generate a TTF font copy with the minimal number of glyph to embed
 /// into the PDF document
 ///
 /// https://opentype.js.org/
+/// https://github.com/HinTak/Font-Validator
 class TtfWriter {
-  /// Create a Truetype Writer object
+  /// Create a TrueType Writer object
   TtfWriter(this.ttf);
 
-  /// original truetype file
+  /// Original TrueType file
   final TtfParser ttf;
 
   int _calcTableChecksum(ByteData table) {
@@ -40,23 +41,23 @@ class TtfWriter {
   }
 
   void _updateCompoundGlyph(TtfGlyphInfo glyph, Map<int, int?> compoundMap) {
-    const ARG_1_AND_2_ARE_WORDS = 1;
-    const MORE_COMPONENTS = 32;
+    const arg1And2AreWords = 1;
+    const moreComponents = 32;
 
     var offset = 10;
     final bytes = glyph.data.buffer
         .asByteData(glyph.data.offsetInBytes, glyph.data.lengthInBytes);
-    var flags = MORE_COMPONENTS;
+    var flags = moreComponents;
 
-    while (flags & MORE_COMPONENTS != 0) {
+    while (flags & moreComponents != 0) {
       flags = bytes.getUint16(offset);
       final glyphIndex = bytes.getUint16(offset + 2);
       bytes.setUint16(offset + 2, compoundMap[glyphIndex]!);
-      offset += (flags & ARG_1_AND_2_ARE_WORDS != 0) ? 8 : 6;
+      offset += (flags & arg1And2AreWords != 0) ? 8 : 6;
     }
   }
 
-  int _wordAlign(int offset, [int align = 2]) {
+  int _wordAlign(int offset, [int align = 4]) {
     return offset + ((align - (offset % align)) % align);
   }
 
@@ -66,48 +67,61 @@ class TtfWriter {
     final tablesLength = <String, int>{};
 
     // Create the glyphs table
-    final glyphsInfo = <TtfGlyphInfo>[];
+    final glyphsMap = <int, TtfGlyphInfo>{};
+    final charMap = <int, int>{};
+    final overflow = <int>{};
     final compounds = <int, int>{};
 
-    for (var index = 0; index < chars.length; index++) {
-      if (chars[index] == 32) {
+    for (final char in chars) {
+      if (char == 32) {
         final glyph = TtfGlyphInfo(32, Uint8List(0), const <int>[]);
-        glyphsInfo.add(glyph);
+        glyphsMap[glyph.index] = glyph;
+        charMap[char] = glyph.index;
         continue;
       }
 
-      final glyphIndex = ttf.charToGlyphIndexMap[chars[index]] ?? 0;
+      final glyphIndex = ttf.charToGlyphIndexMap[char] ?? 0;
       if (glyphIndex >= ttf.glyphOffsets.length) {
+        assert(() {
+          print('Glyph $glyphIndex not in the font ${ttf.fontName}');
+          return true;
+        }());
         continue;
       }
 
-      final glyph = ttf.readGlyph(glyphIndex).copy();
-      for (final g in glyph.compounds) {
-        compounds[g] = -1;
+      void addGlyph(glyphIndex) {
+        final glyph = ttf.readGlyph(glyphIndex).copy();
+        for (final g in glyph.compounds) {
+          compounds[g] = -1;
+          overflow.add(g);
+          addGlyph(g);
+        }
+        glyphsMap[glyph.index] = glyph;
       }
-      glyphsInfo.add(glyph);
+
+      charMap[char] = glyphIndex;
+      addGlyph(glyphIndex);
     }
+
+    final glyphsInfo = <TtfGlyphInfo>[];
+
+    for (final char in chars) {
+      final glyphsIndex = charMap[char];
+      if (glyphsIndex != null) {
+        glyphsInfo.add(glyphsMap[glyphsIndex] ?? glyphsMap.values.first);
+        glyphsMap.remove(glyphsIndex);
+      }
+    }
+
+    glyphsInfo.addAll(glyphsMap.values);
 
     // Add compound glyphs
     for (final compound in compounds.keys) {
-      final index = glyphsInfo.firstWhere(
-        (TtfGlyphInfo glyph) => glyph.index == compound,
-        orElse: () {
-          final glyph = ttf.readGlyph(compound);
-          assert(glyph.compounds.isEmpty, 'This is not a simple glyph');
-          glyphsInfo.add(glyph);
-
-          return glyph;
-        },
-      );
-
+      final index = glyphsInfo
+          .firstWhere((TtfGlyphInfo glyph) => glyph.index == compound);
       compounds[compound] = glyphsInfo.indexOf(index);
-      assert(compounds[compound]! >= 0, 'Unable to find the glyph');
+      assert((compounds[compound] ?? 0) >= 0, 'Unable to find the glyph');
     }
-
-    // Add one last empty glyph
-    final glyph = TtfGlyphInfo(32, Uint8List(0), const <int>[]);
-    glyphsInfo.add(glyph);
 
     // update compound indices
     for (final glyph in glyphsInfo) {
@@ -122,19 +136,19 @@ class TtfWriter {
           _wordAlign(glyphsTableLength + glyph.data.lengthInBytes);
     }
     var offset = 0;
-    final glyphsTable = Uint8List(_wordAlign(glyphsTableLength, 4));
+    final glyphsTable = Uint8List(_wordAlign(glyphsTableLength));
     tables[TtfParser.glyf_table] = glyphsTable;
     tablesLength[TtfParser.glyf_table] = glyphsTableLength;
 
     // Loca
     if (ttf.indexToLocFormat == 0) {
       tables[TtfParser.loca_table] =
-          Uint8List(_wordAlign(glyphsInfo.length * 2, 4)); // uint16
-      tablesLength[TtfParser.loca_table] = glyphsInfo.length * 2;
+          Uint8List(_wordAlign((glyphsInfo.length + 1) * 2)); // uint16
+      tablesLength[TtfParser.loca_table] = (glyphsInfo.length + 1) * 2;
     } else {
       tables[TtfParser.loca_table] =
-          Uint8List(_wordAlign(glyphsInfo.length * 4, 4)); // uint32
-      tablesLength[TtfParser.loca_table] = glyphsInfo.length * 4;
+          Uint8List(_wordAlign((glyphsInfo.length + 1) * 4)); // uint32
+      tablesLength[TtfParser.loca_table] = (glyphsInfo.length + 1) * 4;
     }
 
     {
@@ -151,58 +165,69 @@ class TtfWriter {
         glyphsTable.setAll(offset, glyph.data);
         offset = _wordAlign(offset + glyph.data.lengthInBytes);
       }
+      if (ttf.indexToLocFormat == 0) {
+        loca.setUint16(index, offset ~/ 2);
+      } else {
+        loca.setUint32(index, offset);
+      }
     }
 
-    {
-      // Head table
-      final start = ttf.tableOffsets[TtfParser.head_table]!;
-      final len = ttf.tableSize[TtfParser.head_table]!;
-      final head = Uint8List.fromList(
-          ttf.bytes.buffer.asUint8List(start, _wordAlign(len, 4)));
-      head.buffer.asByteData().setUint32(8, 0); // checkSumAdjustment
-      tables[TtfParser.head_table] = head;
-      tablesLength[TtfParser.head_table] = len;
+    // Copy some tables from the original file
+    for (final tn in {
+      TtfParser.head_table,
+      TtfParser.maxp_table,
+      TtfParser.hhea_table,
+      TtfParser.os_2_table,
+    }) {
+      final start = ttf.tableOffsets[tn];
+      if (start == null) {
+        continue;
+      }
+      final len = ttf.tableSize[tn]!;
+      final data = Uint8List.fromList(
+          ttf.bytes.buffer.asUint8List(start, _wordAlign(len)));
+      tables[tn] = data;
+      tablesLength[tn] = len;
     }
 
-    {
-      // MaxP table
-      final start = ttf.tableOffsets[TtfParser.maxp_table]!;
-      final len = ttf.tableSize[TtfParser.maxp_table]!;
-      final maxp = Uint8List.fromList(
-          ttf.bytes.buffer.asUint8List(start, _wordAlign(len, 4)));
-      maxp.buffer.asByteData().setUint16(4, glyphsInfo.length);
-      tables[TtfParser.maxp_table] = maxp;
-      tablesLength[TtfParser.maxp_table] = len;
-    }
+    tables[TtfParser.head_table]!
+        .buffer
+        .asByteData()
+        .setUint32(8, 0); // checkSumAdjustment
+    tables[TtfParser.maxp_table]!
+        .buffer
+        .asByteData()
+        .setUint16(4, glyphsInfo.length);
+    tables[TtfParser.hhea_table]!
+        .buffer
+        .asByteData()
+        .setUint16(34, glyphsInfo.length); // numOfLongHorMetrics
 
     {
-      // HHEA table
-      final start = ttf.tableOffsets[TtfParser.hhea_table]!;
-      final len = ttf.tableSize[TtfParser.hhea_table]!;
-      final hhea = Uint8List.fromList(
-          ttf.bytes.buffer.asUint8List(start, _wordAlign(len, 4)));
-      hhea.buffer
-          .asByteData()
-          .setUint16(34, glyphsInfo.length); // numOfLongHorMetrics
-
-      tables[TtfParser.hhea_table] = hhea;
-      tablesLength[TtfParser.hhea_table] = len;
+      // post Table
+      final start = ttf.tableOffsets[TtfParser.post_table]!;
+      const len = 32;
+      final data = Uint8List.fromList(
+          ttf.bytes.buffer.asUint8List(start, _wordAlign(len)));
+      data.buffer.asByteData().setUint32(0, 0x00030000); // Version 3.0 no names
+      tables[TtfParser.post_table] = data;
+      tablesLength[TtfParser.post_table] = len;
     }
 
     {
       // HMTX table
       final len = 4 * glyphsInfo.length;
-      final hmtx = Uint8List(_wordAlign(len, 4));
+      final hmtx = Uint8List(_wordAlign(len));
       final hmtxOffset = ttf.tableOffsets[TtfParser.hmtx_table]!;
       final hmtxData = hmtx.buffer.asByteData();
       final numOfLongHorMetrics = ttf.numOfLongHorMetrics;
-      final defaultadvanceWidth =
+      final defaultAdvanceWidth =
           ttf.bytes.getUint16(hmtxOffset + (numOfLongHorMetrics - 1) * 4);
       var index = 0;
       for (final glyph in glyphsInfo) {
         final advanceWidth = glyph.index < numOfLongHorMetrics
             ? ttf.bytes.getUint16(hmtxOffset + glyph.index * 4)
-            : defaultadvanceWidth;
+            : defaultAdvanceWidth;
         final leftBearing = glyph.index < numOfLongHorMetrics
             ? ttf.bytes.getInt16(hmtxOffset + glyph.index * 4 + 2)
             : ttf.bytes.getInt16(hmtxOffset +
@@ -219,12 +244,12 @@ class TtfWriter {
     {
       // CMAP table
       const len = 40;
-      final cmap = Uint8List(_wordAlign(len, 4));
+      final cmap = Uint8List(_wordAlign(len));
       final cmapData = cmap.buffer.asByteData();
       cmapData.setUint16(0, 0); // Table version number
       cmapData.setUint16(2, 1); // Number of encoding tables that follow.
       cmapData.setUint16(4, 3); // Platform ID
-      cmapData.setUint16(6, 1); // Platform-specific encoding ID
+      cmapData.setUint16(6, 10); // Platform-specific encoding ID
       cmapData.setUint32(8, 12); // Offset from beginning of table
       cmapData.setUint16(12, 12); // Table format
       cmapData.setUint32(16, 28); // Table length
@@ -239,7 +264,19 @@ class TtfWriter {
     }
 
     {
-      final bytes = <int>[];
+      // name table
+      const len = 18;
+      final nameBuf = Uint8List(_wordAlign(len));
+      final nameData = nameBuf.buffer.asByteData();
+      nameData.setUint16(0, 0); // Table version number 0
+      nameData.setUint16(2, 0); // Count 0 -> no names
+      nameData.setUint16(4, 6); // Storage Offset
+      tables[TtfParser.name_table] = nameBuf;
+      tablesLength[TtfParser.name_table] = len;
+    }
+
+    {
+      final bytes = BytesBuilder();
 
       final numTables = tables.length;
 
@@ -258,7 +295,23 @@ class TtfWriter {
       // Create the table directory
       var count = 0;
       var offset = 12 + numTables * 16;
-      tables.forEach((String name, Uint8List data) {
+      var headOffset = 0;
+
+      final tableKeys = [
+        TtfParser.head_table,
+        TtfParser.hhea_table,
+        TtfParser.maxp_table,
+        TtfParser.os_2_table,
+        TtfParser.hmtx_table,
+        TtfParser.cmap_table,
+        TtfParser.loca_table,
+        TtfParser.glyf_table,
+        TtfParser.name_table,
+        TtfParser.post_table,
+      ];
+
+      for (final name in tableKeys) {
+        final data = tables[name]!;
         final runes = name.runes.toList();
         start.setUint8(12 + count * 16, runes[0]);
         start.setUint8(12 + count * 16 + 1, runes[1]);
@@ -268,16 +321,28 @@ class TtfWriter {
             _calcTableChecksum(data.buffer.asByteData())); // checkSum
         start.setUint32(12 + count * 16 + 8, offset); // offset
         start.setUint32(12 + count * 16 + 12, tablesLength[name]!); // length
+
+        if (name == 'head') {
+          headOffset = offset;
+        }
         offset += data.lengthInBytes;
         count++;
-      });
-      bytes.addAll(start.buffer.asUint8List());
+      }
+      bytes.add(start.buffer.asUint8List());
 
-      tables.forEach((String name, Uint8List data) {
-        bytes.addAll(data.buffer.asUint8List());
-      });
+      for (final name in tableKeys) {
+        final data = tables[name]!;
+        bytes.add(data.buffer.asUint8List());
+      }
 
-      return Uint8List.fromList(bytes);
+      final output = bytes.toBytes();
+
+      final crc = 0xB1B0AFBA - _calcTableChecksum(output.buffer.asByteData());
+      output.buffer
+          .asByteData()
+          .setUint32(headOffset + 8, crc & 0xffffffff); // checkSumAdjustment
+
+      return output;
     }
   }
 }

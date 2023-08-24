@@ -81,24 +81,33 @@ bool PrintJob::printPdf(const std::string& name,
                         bool usePrinterSettings) {
   documentName = name;
 
-  auto dm = static_cast<DEVMODE*>(GlobalAlloc(0, sizeof(DEVMODE)));
+  std::size_t dmSize = sizeof(DEVMODE);
+  std::size_t dmExtra = 0;
+
+  if (!printer.empty()) {
+    dmExtra = DeviceCapabilities(fromUtf8(printer).c_str(), NULL, DC_EXTRA,
+                                 NULL, NULL);
+  }
+
+  auto dm = static_cast<DEVMODE*>(GlobalAlloc(0, dmSize + dmExtra));
 
   if (usePrinterSettings) {
     dm = nullptr;  // to use default driver config
   } else {
     ZeroMemory(dm, sizeof(DEVMODE));
-    dm->dmSize = sizeof(DEVMODE);
+    dm->dmSize = (WORD)dmSize;
+    dm->dmDriverExtra = (WORD)dmExtra;
     dm->dmFields =
         DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH;
     dm->dmPaperSize = 0;
     if (width > height) {
       dm->dmOrientation = DMORIENT_LANDSCAPE;
-      dm->dmPaperWidth = static_cast<short>(round(height * 254 / 72));
-      dm->dmPaperLength = static_cast<short>(round(width * 254 / 72));
+      dm->dmPaperWidth = static_cast<short>(round(height * 254 / pdfDpi));
+      dm->dmPaperLength = static_cast<short>(round(width * 254 / pdfDpi));
     } else {
       dm->dmOrientation = DMORIENT_PORTRAIT;
-      dm->dmPaperWidth = static_cast<short>(round(width * 254 / 72));
-      dm->dmPaperLength = static_cast<short>(round(height * 254 / 72));
+      dm->dmPaperWidth = static_cast<short>(round(width * 254 / pdfDpi));
+      dm->dmPaperLength = static_cast<short>(round(height * 254 / pdfDpi));
     }
   }
 

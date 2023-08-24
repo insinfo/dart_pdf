@@ -1,5 +1,52 @@
 # Changelog
 
+## 5.11.1
+
+- Use pdfDpi on CPP lib
+
+## 5.11.0
+
+- Set Flutter 3.10 as the minimum version
+- Fix web builds with Flutter 3.10
+- Fix cmake build on Linux and Windows
+
+## 5.10.4
+
+- Update Google Fonts
+- Fix CMP0135 policy issue [Jemis Goti]
+- Fix raster crash on iOS and MacOS [Eduardo Vital Alencar Cunha]
+- Fix wrong format in directPrintPdf [<AlhasanAlQaisi>]
+- Add compatibility with Android Gradle Plugin 8.0 [asaarnak]
+- Add compatibility with  Flutter 3.10
+- Re-init UIPrinter cause issues with delegate [Hasan]
+
+## 5.10.3
+
+- Check if widget is mounted before setState [asaarnak]
+
+## 5.10.2
+
+- Fix Flutter 3.9 deprecations
+- Improve podspec files
+
+## 5.10.1
+
+- Fix loading pdfjs in debug mode
+
+## 5.10.0
+
+- Remove deprecated Android embedding
+- Add custom pages builder to PdfPreview widget [Milad akarie]
+- Update Image dependency
+- Fix canChangeOrientation option not appearing bug [Bilal Raja]
+- Add Support cmaps option on printing web [Koji Wakamiya]
+- Add Flutter 3.7 compatibility
+
+## 5.9.3
+
+- Add an option to shrinkwrap preview and set scrollablePhysics [Damian Bast]
+- Resolve driver compatibility issues on Windows [Alban]
+
 ## 5.9.2
 
 - Added mounted check for setState in printing>preview>raster [Julius Alibrown]
@@ -155,7 +202,7 @@
 ## 5.1.0
 
 - Fix PdfPreview timer dispose [wwl901215]
-- Remove unnecessary _raster call in PdfPreview [yaymalaga]
+- Remove unnecessary \_raster call in PdfPreview [yaymalaga]
 - Added subject, body and email parameters in sharePdf [Deepak]
 - Subject, body and emails parameter to pdf preview [Deepak]
 
